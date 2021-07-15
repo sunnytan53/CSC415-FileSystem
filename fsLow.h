@@ -1,7 +1,11 @@
 /**************************************************************
-* Class:  CSC-415
-* Name: Professor Bierman
-* Student ID: N/A
+* Class:  CSC-415-02 Summer 2021
+* Name: Team Fiore 
+* Student ID:
+
+
+
+
 * Project: Basic File System
 *
 * File: fsLow.h

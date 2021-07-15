@@ -1,8 +1,11 @@
 /**************************************************************
-* Class:  CSC-415-0# Spring 2021
-* Name: 
+* Class:  CSC-415-02 Summer 2021
+* Name: Team Fiore 
 * Student ID:
-* GitHub Name:
+
+
+
+
 * Project: Buffered I/O
 *
 * File: b_io.c

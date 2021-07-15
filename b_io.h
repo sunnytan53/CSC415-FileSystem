@@ -1,7 +1,11 @@
 /**************************************************************
-* Class:  CSC-415-0# 
-* Name:
+* Class:  CSC-415-02 Summer 2021
+* Name: Team Fiore
 * Student ID:
+
+
+
+
 * Project: File System Project
 *
 * File: b_io.h
