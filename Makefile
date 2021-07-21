@@ -42,7 +42,7 @@ CC=gcc
 CFLAGS= -g -I.
 LIBS =pthread
 DEPS = 
-ADDOBJ= fsInit.o
+ADDOBJ= mfs.o fsInit.o
 ARCH = $(shell uname -m)
 
 ifeq ($(ARCH), aarch64)
@@ -60,7 +60,7 @@ $(ROOTNAME)$(HW)$(FOPTION): $(OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) -lm -l readline -l $(LIBS)
 
 clean:
-	rm $(ROOTNAME)$(HW)$(FOPTION).o $(ADDOBJ) $(ROOTNAME)$(HW)$(FOPTION)
+	rm $(ROOTNAME)$(HW)$(FOPTION).o $(ADDOBJ) $(ROOTNAME)$(HW)$(FOPTION) SampleVolume
 
 run: $(ROOTNAME)$(HW)$(FOPTION)
 	./$(ROOTNAME)$(HW)$(FOPTION) $(RUNOPTIONS)

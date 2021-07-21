@@ -28,6 +28,7 @@
 
 #include "fsLow.h"
 #include "mfs.h"
+#include "b_io.h"
 
 /***************  START LINUX TESTING CODE FOR SHELL ***************/
 #define TEMP_LINUX 0 //MUST be ZERO for working with your file system
@@ -106,15 +107,15 @@ int fs_isDir(char *path)
 #define DIRMAX_LEN 4096
 
 /****   SET THESE TO 1 WHEN READY TO TEST THAT COMMAND ****/
-#define CMDLS_ON 0
+#define CMDLS_ON 1
 #define CMDCP_ON 0
 #define CMDMV_ON 0
-#define CMDMD_ON 0
-#define CMDRM_ON 0
+#define CMDMD_ON 1
+#define CMDRM_ON 1
 #define CMDCP2L_ON 0
 #define CMDCP2FS_ON 0
-#define CMDCD_ON 0
-#define CMDPWD_ON 0
+#define CMDCD_ON 1
+#define CMDPWD_ON 1
 
 typedef struct dispatch_t
 {
@@ -184,7 +185,7 @@ int displayFiles(fdDir *dirp, int flall, int fllong)
 }
 
 /****************************************************
-*  ls commmand
+*  ls command
 ****************************************************/
 int cmd_ls(int argcnt, char *argvec[])
 {
@@ -341,6 +342,51 @@ int cmd_mv(int argcnt, char *argvec[])
 #if (CMDMV_ON == 1)
 	return -99;
 	// **** TODO ****  For you to implement
+	char buf[BUFFERLEN];
+	int readCount, writeCount;
+	int test_fdsrc, test_fddest;
+	char *src, *dest;
+
+	switch (argcnt)
+	{
+	case 2:
+		src = argvec[1];
+		dest = src;
+		break;
+
+	case 3:
+		src = argvec[1];
+		dest = argvec[2];
+		break;
+
+	default:
+		printf("Usage: mv srcfile [destfile]\n");
+		return (-1);
+	}
+
+	if (!fs_isFile(src))
+	{
+		printf("%s is not a file.\n", src);
+		return -1;
+	}
+
+	// create file in dest
+	test_fdsrc = b_open(src, O_RDONLY);
+	test_fddest = b_open(dest, O_WRONLY | O_CREAT | O_TRUNC);
+
+	//read from src, write to dest
+	do
+	{
+		readCount = b_read(test_fdsrc, buf, BUFFERLEN);
+		writeCount = b_write(test_fddest, buf, readCount);
+	} while (readCount == BUFFERLEN);
+
+	//close the files
+	b_close(test_fdsrc);
+	b_close(test_fddest);
+
+	fs_delete(src);
+
 #endif
 	return 0;
 }
@@ -384,10 +430,10 @@ int cmd_rm(int argcnt, char *argvec[])
 	{
 		return (fs_rmdir(path));
 	}
-	if (fs_isFile(path))
-	{
-		return (fs_delete(path));
-	}
+	// if (fs_isFile(path))
+	// {
+	// 	return (fs_delete(path));
+	// }
 
 	printf("The path %s is neither a file not a directory\n", path);
 #endif

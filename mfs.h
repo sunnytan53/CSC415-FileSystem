@@ -19,13 +19,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "b_io.h"
-
-#include <dirent.h>
-#define FT_REGFILE DT_REG
-#define FT_DIRECTORY DT_DIR
-#define FT_LINK DT_LNK
+#include "fsLow.h"
 
 #ifndef uint64_t
 typedef u_int64_t uint64_t;
@@ -34,30 +33,80 @@ typedef u_int64_t uint64_t;
 typedef u_int32_t uint32_t;
 #endif
 
+#define FS_DEBUG	   // comment out to completely remove all debug info
+#define LIMIT_FS_DEBUG // comment out to show all debug info
+
+#ifdef FS_DEBUG
+#define dprintf(fmt, args...) fprintf(stdout, "\nDEBUG: %s:%d - %s(): " fmt, \
+									  __FILE__, __LINE__, __func__, ##args)
+#else
+#define dprintf(fmt, args...) // do nothing
+#endif
+
+#ifdef LIMIT_FS_DEBUG
+#define ldprintf(fmt, args...) // do nothing
+#else
+#define ldprintf(fmt, args...) fprintf(stdout, "\nDEBUG: %s:%d - %s(): " fmt, \
+									   __FILE__, __LINE__, __func__, ##args)
+#endif
+
+#define eprintf(fmt, args...) fprintf(stderr, "\nERROR: %s:%d - %s(): " fmt, \
+									  __FILE__, __LINE__, __func__, ##args)
+
+#define TYPE_DIR 0
+#define TYPE_FILE 1
 struct fs_diriteminfo
 {
 	unsigned short d_reclen; /* length of this record */
 	unsigned char fileType;
-	char d_name[256]; /* filename max filename is 255 characters */
+	unsigned char space;		 // determine this entry is free or used
+	uint64_t entryStartLocation; // exact location of the psycial file
+	uint64_t size;				 // the exact size of the file occupies
+	char d_name[256];			 /* filename max filename is 255 characters */
 };
 
+#define MAX_AMOUNT_OF_ENTRIES 10
 typedef struct
 {
-	char name[256];
-	int type;
-	int size;
-	time_t dateCreated;
-	time_t dateAccessed;
-	time_t dateModified;
-	int entryLoc;
-} dirEntry;
+	unsigned short d_reclen;		 /*length of this record */
+	unsigned short dirEntryAmount;	 // amount of undeleted entries
+	unsigned short dirEntryPosition; /*which directory entry position, like file pos */
+	uint64_t directoryStartLocation; /*Starting LBA of directory */
+	char dirName[256];				 // name of this directory
+	struct fs_diriteminfo entryList[MAX_AMOUNT_OF_ENTRIES];
+} fdDir;
 
 typedef struct
 {
-	uint64_t dirLoc; // location of this directory file
-	unsigned short dirEntryAmount; // length of entry list (amount of entries)
-	dirEntry dirEntryList[10]; // entry list set max
-} fdDir;
+	uint64_t magicNumber;
+	uint64_t blockSize;
+	uint64_t numberOfBlocks;	  // also represents bitmap length
+	uint vcbBlockCount;			  // also represents freespace start location
+	uint freespaceBlockCount;	  // used for check when it is not the first run
+	uint64_t firstFreeBlockIndex; // used for check when it is not the first run
+	uint64_t rootDirLocation;	  // can be calculated by adding the other two counts
+} vcb;
+
+// vcb and freespace related function
+fdDir *createDirectory(struct fs_diriteminfo *, char *);
+uint64_t allocateFreespace(uint64_t requestedBlock);
+int updateOurVCB();
+int updateFreespace();
+int updateDirectory(fdDir *);
+int updateByLBAwrite(void *, uint64_t, uint);
+uint getBlockCount(uint64_t);
+fdDir *getDirByPath(char *);
+char *getPathByLastSlash(char *);
+fdDir *getDirByEntry(struct fs_diriteminfo *);
+fdDir *getRoot();
+int releaseFreespace(uint64_t, uint64_t);
+
+// global values to keep track on our file system
+vcb *ourVCB;
+int *freespace;
+fdDir *fsCWD;
+fdDir *openedDir;
+int dirIsOpened;
 
 int fs_mkdir(const char *pathname, mode_t mode);
 int fs_rmdir(const char *pathname);
