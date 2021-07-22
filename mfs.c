@@ -9,7 +9,7 @@
  * and it is responsible for updating the freespace into the volume
  * 
  * @param requestedBlock amount of blocks to be occupied 
- * @return 0-∞ for starting block, -1 for fail, -2 for invalid arg, -3 for not enough space
+ * @return 0-∞ for starting block, -1 for fail
  */
 uint64_t allocateFreespace(uint64_t requestedBlock)
 {
@@ -17,7 +17,7 @@ uint64_t allocateFreespace(uint64_t requestedBlock)
     if (requestedBlock < 1)
     {
         eprintf("invalid arg");
-        return -2;
+        return -1;
     }
 
     uint64_t count = 0;
@@ -81,8 +81,8 @@ uint64_t allocateFreespace(uint64_t requestedBlock)
     }
 
     // not enough space
-    eprintf("not enough space");
-    return -3;
+    printf("not enough space");
+    return -1;
 }
 
 /**
@@ -112,6 +112,7 @@ int updateFreespace()
         bytes++;
     }
 
+    // starts right behind vcb
     return updateByLBAwrite(freespace, bytes, ourVCB->vcbBlockCount);
 }
 
@@ -211,9 +212,27 @@ fdDir *createDirectory(struct fs_diriteminfo *parent, char *name)
     }
     newDir->directoryStartLocation = retVal;
     newDir->d_reclen = sizeof(fdDir);
-    strcpy(newDir->dirName, name);
     newDir->dirEntryAmount = 2;
-    newDir->dirEntryPosition = 0;
+
+    // truncate the name if it exceeds the max length
+    if (strlen(name) > (MAX_NAME_LENGTH - 1))
+    {
+        char *shortName = malloc(MAX_NAME_LENGTH);
+        if (shortName == NULL)
+        {
+            eprintf("malloc() on shortName");
+            return NULL;
+        }
+
+        // make sure it only contains one less than the max for null terminator
+        strncpy(shortName, name, MAX_NAME_LENGTH - 1);
+        shortName[MAX_NAME_LENGTH - 1] = '\0';
+        strcpy(newDir->dirName, shortName);
+    }
+    else
+    {
+        strcpy(newDir->dirName, name);
+    }
 
     // initialize current directory entry .
     strcpy(newDir->entryList[0].d_name, ".");
@@ -258,9 +277,7 @@ int fs_isFile(char *path)
 {
     // keep a copy of fsCWD and openedDir
     fdDir *copyOfCWD = fsCWD;
-    fdDir *copyOfOpenedDir = openedDir;
     ldprintf("copy of fsCWD: %X", fsCWD);
-    ldprintf("copy of openedDir: %X", openedDir);
 
     // replace cwd by openedDir if a directory is open
     int dirIsOpened = 0;
@@ -285,7 +302,7 @@ int fs_isFile(char *path)
 
     int result = 0;
 
-    // if the path is not even to a directory, skip this step
+    // if the path is not even in a directory, then we don't need to check anymore
     if (retPtr != NULL)
     {
         // check if the item is inside this directory
@@ -303,15 +320,13 @@ int fs_isFile(char *path)
     if (dirIsOpened)
     {
         fsCWD = copyOfCWD;
-        openedDir = copyOfOpenedDir;
-        free(retPtr);
-        retPtr = NULL;
     }
     ldprintf("reseted fsCWD: %X", fsCWD);
-    ldprintf("reseted openedDir: %X\n", openedDir);
 
+    free(retPtr);
     free(pathBeforeLastSlash);
     free(filename);
+    retPtr = NULL;
     pathBeforeLastSlash = NULL;
     filename = NULL;
 
@@ -328,9 +343,7 @@ int fs_isDir(char *path)
 {
     // keep a copy of fsCWD and openedDir
     fdDir *copyOfCWD = fsCWD;
-    fdDir *copyOfOpenedDir = openedDir;
     ldprintf("origianl fsCWD: %X", fsCWD);
-    ldprintf("original openedDir: %X", openedDir);
 
     // replace cwd by openedDir if a directory is open
     int dirIsOpened = 0;
@@ -352,13 +365,11 @@ int fs_isDir(char *path)
     if (dirIsOpened)
     {
         fsCWD = copyOfCWD;
-        openedDir = copyOfOpenedDir;
-        free(retPtr);
         retPtr = NULL;
     }
     ldprintf("reseted fsCWD: %X", fsCWD);
-    ldprintf("reseted openedDir: %X\n", openedDir);
 
+    free(retPtr);
     return result;
 }
 
@@ -400,26 +411,19 @@ fdDir *getRoot()
  */
 fdDir *fs_opendir(const char *name)
 {
-    // since opendir uses a absolute path
-    // we need to set fsCWD to root in order for other functions works
-    fdDir *copyOfCWD = fsCWD;
-    fsCWD = getRoot();
-
     // no need to worry pathname will be modified
     // because getDirByPath() manipulate the copy of it
     openedDir = getDirByPath((char *)name);
 
-    // set the entry position to 0 for fs_readDir() works
-    openedDir->dirEntryPosition = 0;
+    // set the entry index to 0 for fs_readDir() works
+    openedDirEntryIndex = 0;
 
     // clear the temp used cwd and reset it
-    free(fsCWD);
-    fsCWD = copyOfCWD;
     return openedDir;
 }
 
 /**
- * @brief get a directory pointer from cwd
+ * @brief get a directory pointer from cwd (DO NOT modify pass in argument)
  * 
  * @param name name of the path
  * @return direcotry pointer, NULL for error or not found
@@ -588,12 +592,12 @@ char *fs_getcwd(char *buf, size_t size)
  */
 struct fs_diriteminfo *fs_readdir(fdDir *dirp)
 {
-    for (int i = dirp->dirEntryPosition; i < MAX_AMOUNT_OF_ENTRIES; i++)
+    for (int i = openedDirEntryIndex; i < MAX_AMOUNT_OF_ENTRIES; i++)
     {
-        // find the first entry and mark the dirEntryPosition
+        // find the first entry and mark the index
         if (dirp->entryList[i].space == SPACE_USED)
         {
-            dirp->dirEntryPosition = i + 1;
+            openedDirEntryIndex = i + 1;
             return dirp->entryList + i;
         }
     }
@@ -749,17 +753,13 @@ int fs_mkdir(const char *pathname, mode_t mode)
     if (parent == NULL)
     {
         printf("%s is not exisited from cwd\n", pathBeforeLastSlash);
-        return -1;
-    }
 
-    // skip if there is a directory with same name
-    for (int i = 0; i < MAX_AMOUNT_OF_ENTRIES; i++)
-    {
-        if (parent->entryList[i].space == SPACE_USED && strcmp(parent->entryList[i].d_name, newDirName) == 0)
-        {
-            printf("\nsame directory name existed!\n");
-            return -1;
-        }
+        // avoid memory leak
+        free(pathBeforeLastSlash);
+        free(newDirName);
+        pathBeforeLastSlash = NULL;
+        newDirName = NULL;
+        return -1;
     }
 
     // create directory if the amount is not reaching the max
@@ -767,8 +767,27 @@ int fs_mkdir(const char *pathname, mode_t mode)
     if (parent->dirEntryAmount < MAX_AMOUNT_OF_ENTRIES)
     {
         dprintf("creating new directory %s", newDirName);
+
         // create the new directory
         fdDir *createdDir = createDirectory(parent->entryList, newDirName);
+
+        // skip if it has same name with existed one
+        for (int i = 0; i < MAX_AMOUNT_OF_ENTRIES; i++)
+        {
+            if (parent->entryList[i].space == SPACE_USED && strcmp(parent->entryList[i].d_name, newDirName) == 0)
+            {
+                printf("\nsame directory name existed!\n");
+
+                // avoid memory leak
+                free(pathBeforeLastSlash);
+                free(newDirName);
+                free(parent);
+                pathBeforeLastSlash = NULL;
+                newDirName = NULL;
+                parent = NULL;
+                return -1;
+            }
+        }
 
         // find the first avaliable space and put the data in
         for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
@@ -823,6 +842,11 @@ int fs_rmdir(const char *pathname)
     else if (target->directoryStartLocation == ourVCB->rootDirLocation)
     {
         printf("root can't be removed\n");
+
+        // avoid memory leak
+        free(target);
+        target = NULL;
+
         return -1;
     }
 
@@ -854,8 +878,10 @@ int fs_rmdir(const char *pathname)
             // either remove directory or delete file
             if (fs_isDir(entryPath))
             {
+                // fs_rmdir shouldn't fail so only check errors
                 if (fs_rmdir(entryPath) != 0)
                 { // stops removing the rest
+                    eprintf("fs_rmdir()");
                     return -1;
                 }
             }
@@ -895,11 +921,11 @@ int fs_rmdir(const char *pathname)
     // release the blocks occupied by the directory
     if (releaseFreespace(target->directoryStartLocation, getBlockCount(target->d_reclen)) != 0)
     {
-        eprintf("releaseFreespace()");
+        eprintf("releaseFreespace() falied");
         return -1;
     }
 
-    printf("%s: %s was removed\n\n", pathname, target->dirName);
+    printf("%s : %s was removed\n", pathname, target->dirName);
 
     free(target);
     free(parent);

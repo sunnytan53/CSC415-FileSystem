@@ -36,6 +36,7 @@ typedef u_int32_t uint32_t;
 #define FS_DEBUG	   // comment out to completely remove all debug info
 #define LIMIT_FS_DEBUG // comment out to show all debug info
 
+// comment out FS_DEBUG to print NO debug info
 #ifdef FS_DEBUG
 #define dprintf(fmt, args...) fprintf(stdout, "\nDEBUG: %s:%d - %s(): " fmt, \
 									  __FILE__, __LINE__, __func__, ##args)
@@ -43,6 +44,8 @@ typedef u_int32_t uint32_t;
 #define dprintf(fmt, args...) // do nothing
 #endif
 
+// ldprintf() can hide by simpling adding "l" to original dprintf
+// comment out LIMIT_FS_DEBUG to print ALL debug info
 #ifdef LIMIT_FS_DEBUG
 #define ldprintf(fmt, args...) // do nothing
 #else
@@ -50,19 +53,22 @@ typedef u_int32_t uint32_t;
 									   __FILE__, __LINE__, __func__, ##args)
 #endif
 
+// print error which shows unexpected error
+// all check with eprintf() normally get a NULL, so we can skip free()
 #define eprintf(fmt, args...) fprintf(stderr, "\nERROR: %s:%d - %s(): " fmt, \
 									  __FILE__, __LINE__, __func__, ##args)
 
 #define TYPE_DIR 0
 #define TYPE_FILE 1
+#define MAX_NAME_LENGTH 256
 struct fs_diriteminfo
 {
 	unsigned short d_reclen; /* length of this record */
 	unsigned char fileType;
 	unsigned char space;		 // determine this entry is free or used
-	uint64_t entryStartLocation; // exact location of the psycial file
+	uint64_t entryStartLocation;
 	uint64_t size;				 // the exact size of the file occupies
-	char d_name[256];			 /* filename max filename is 255 characters */
+	char d_name[MAX_NAME_LENGTH];			 /* filename max filename is 255 characters */
 };
 
 #define MAX_AMOUNT_OF_ENTRIES 10
@@ -70,9 +76,9 @@ typedef struct
 {
 	unsigned short d_reclen;		 /*length of this record */
 	unsigned short dirEntryAmount;	 // amount of undeleted entries
-	unsigned short dirEntryPosition; /*which directory entry position, like file pos */
+	// unsigned short dirEntryPosition; // we keep it as global value
 	uint64_t directoryStartLocation; /*Starting LBA of directory */
-	char dirName[256];				 // name of this directory
+	char dirName[MAX_NAME_LENGTH];				 // name of this directory
 	struct fs_diriteminfo entryList[MAX_AMOUNT_OF_ENTRIES];
 } fdDir;
 
@@ -106,6 +112,7 @@ vcb *ourVCB;
 int *freespace;
 fdDir *fsCWD;
 fdDir *openedDir;
+uint64_t openedDirEntryIndex;
 
 int fs_mkdir(const char *pathname, mode_t mode);
 int fs_rmdir(const char *pathname);
@@ -127,8 +134,6 @@ struct fs_stat
 	time_t st_accesstime; /* time of last access */
 	time_t st_modtime;	  /* time of last modification */
 	time_t st_createtime; /* time of last status change */
-
-	/* add additional attributes here for your file system */
 };
 
 int fs_stat(const char *path, struct fs_stat *buf);
