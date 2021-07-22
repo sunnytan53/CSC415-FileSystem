@@ -125,7 +125,6 @@ int initFileSystem(uint64_t numberOfBlocks, uint64_t blockSize)
 
 	// setting the other status in memory
 	openedDir = NULL;
-	dirIsOpened = 0;
 
 	return 0;
 }

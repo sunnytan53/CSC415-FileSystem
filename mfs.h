@@ -106,7 +106,6 @@ vcb *ourVCB;
 int *freespace;
 fdDir *fsCWD;
 fdDir *openedDir;
-int dirIsOpened;
 
 int fs_mkdir(const char *pathname, mode_t mode);
 int fs_rmdir(const char *pathname);

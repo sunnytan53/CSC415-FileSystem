@@ -59,7 +59,7 @@ uint64_t allocateFreespace(uint64_t requestedBlock)
                         if (checkBit(k, freespace) == SPACE_FREE)
                         {
                             // set the new first free block index and update ourVCB
-                            dprintf("first free block index changes to %ld\n", k);
+                            dprintf("first free block index changes to %ld", k);
                             ourVCB->firstFreeBlockIndex = k;
                             updateOurVCB();
                             break;
@@ -263,8 +263,10 @@ int fs_isFile(char *path)
     ldprintf("copy of openedDir: %X", openedDir);
 
     // replace cwd by openedDir if a directory is open
-    if (dirIsOpened)
+    int dirIsOpened = 0;
+    if (openedDir != NULL)
     {
+        dirIsOpened = 1;
         fsCWD = openedDir;
     }
 
@@ -331,8 +333,10 @@ int fs_isDir(char *path)
     ldprintf("original openedDir: %X", openedDir);
 
     // replace cwd by openedDir if a directory is open
-    if (dirIsOpened)
+    int dirIsOpened = 0;
+    if (openedDir != NULL)
     {
+        dirIsOpened = 1;
         fsCWD = openedDir;
     }
 
@@ -407,9 +411,6 @@ fdDir *fs_opendir(const char *name)
 
     // set the entry position to 0 for fs_readDir() works
     openedDir->dirEntryPosition = 0;
-
-    // mark dirIsOpened
-    dirIsOpened = 1;
 
     // clear the temp used cwd and reset it
     free(fsCWD);
@@ -488,7 +489,8 @@ fdDir *getDirByPath(char *name)
  */
 fdDir *getDirByEntry(struct fs_diriteminfo *entry)
 {
-    if (entry->fileType != TYPE_DIR) {
+    if (entry->fileType != TYPE_DIR)
+    {
         return NULL;
     }
 
@@ -589,7 +591,7 @@ struct fs_diriteminfo *fs_readdir(fdDir *dirp)
     for (int i = dirp->dirEntryPosition; i < MAX_AMOUNT_OF_ENTRIES; i++)
     {
         // find the first entry and mark the dirEntryPosition
-        if (dirp->entryList[i].space == SPACE_USED && dirp->entryList[i].fileType == TYPE_DIR && dirp->entryList[i].space == SPACE_USED)
+        if (dirp->entryList[i].space == SPACE_USED)
         {
             dirp->dirEntryPosition = i + 1;
             return dirp->entryList + i;
@@ -609,7 +611,7 @@ struct fs_diriteminfo *fs_readdir(fdDir *dirp)
 int fs_closedir(fdDir *dirp)
 {
     free(dirp);
-    dirIsOpened = 0;
+    openedDir = NULL;
     return 0;
 }
 
@@ -679,7 +681,7 @@ char *getPathByLastSlash(char *path)
         cutIndex = 0;
     }
 
-    dprintf("cutIndex: %d", cutIndex);
+    ldprintf("cutIndex: %d", cutIndex);
 
     // prepare the new pointer to replace and return
     char *pathBeforeLastSlash = malloc(cutIndex + 1);
@@ -710,8 +712,8 @@ char *getPathByLastSlash(char *path)
     // place back the path into original path buffer
     strcpy(path, pathBeforeLastSlash);
 
-    dprintf("path before last slash is %s", path);
-    dprintf("the left path is %s\n", leftPath);
+    ldprintf("path before last slash is %s", path);
+    ldprintf("the left path is %s\n", leftPath);
 
     return leftPath;
 }
@@ -820,7 +822,7 @@ int fs_rmdir(const char *pathname)
     }
     else if (target->directoryStartLocation == ourVCB->rootDirLocation)
     {
-        printf("root can't be removed");
+        printf("root can't be removed\n");
         return -1;
     }
 
@@ -853,12 +855,12 @@ int fs_rmdir(const char *pathname)
             if (fs_isDir(entryPath))
             {
                 if (fs_rmdir(entryPath) != 0)
-                { // stops moving the rest
+                { // stops removing the rest
                     return -1;
                 }
             }
             // else if (fs_isFile(entryPath))
-            // {// stops moving the rest
+            // {// stops removing the rest
             // if (fs_delete(entryPath) != 0)
             // {
             //     return -1;
@@ -874,6 +876,7 @@ int fs_rmdir(const char *pathname)
     // redirect cwd to the parent if the directory is going to be deleted
     if (target->directoryStartLocation == fsCWD->directoryStartLocation)
     {
+        printf("\n*** cwd is being removed, redirect to parent ***\n");
         fs_setcwd("..");
     }
 
@@ -896,7 +899,7 @@ int fs_rmdir(const char *pathname)
         return -1;
     }
 
-    printf("%s: %s was removed\n", pathname, target->dirName);
+    printf("%s: %s was removed\n\n", pathname, target->dirName);
 
     free(target);
     free(parent);
