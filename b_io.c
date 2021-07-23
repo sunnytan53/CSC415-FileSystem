@@ -99,6 +99,16 @@ int b_open(char *path, int flags)
 	strcpy(pathBeforeLastSlash, path);
 	fcbArray[returnFd].trueFileName = getPathByLastSlash(pathBeforeLastSlash);
 
+	// stop if there is no given file name
+	if (strcmp(fcbArray[returnFd].trueFileName, "") == 0)
+	{ // avoiding memory leak
+		printf("\nname should be given!!!\n");
+		fcbArray[returnFd].fd = -1;
+		free(pathBeforeLastSlash);
+		pathBeforeLastSlash = NULL;
+		return -1;
+	}
+
 	// find the directory that is going to store the file
 	fcbArray[returnFd].parent = getDirByPath(pathBeforeLastSlash);
 

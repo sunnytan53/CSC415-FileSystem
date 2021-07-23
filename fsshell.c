@@ -388,7 +388,7 @@ int cmd_mv(int argcnt, char *argvec[])
 	b_close(test_fddest);
 
 	// only delete the source if we do move the file
-	if (readCount > 0)
+	if (readCount >= 0 && writeCount >= 0)
 	{
 		fs_delete(src);
 	}
