@@ -197,15 +197,18 @@ int initFreespace()
 int initRootDir()
 {
 	// pass in NULL to represent as root directory
-	fdDir *retPtr = createDirectory(NULL, "/");
-	if (retPtr == NULL)
+	fdDir *retDir = createDirectory(NULL, "/");
+	if (retDir == NULL)
 	{
 		eprintf("createDirectory() failed");
 		return -1;
 	}
 
+    // write the directory file psycially
+    updateDirectory(retDir);
+
 	// set the root directory as cwd
-	fsCWD = retPtr;
+	fsCWD = retDir;
 	ourVCB->rootDirLocation = fsCWD->directoryStartLocation;
 	return 0;
 }

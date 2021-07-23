@@ -2,7 +2,7 @@
 #include "bitmap.c"
 
 // OUTPUT TERMINAL COMMAND
-// Hexdump/hexdump.linux SampleVolume --count 1 --start 7
+// Hexdump/hexdump.linux SampleVolume --count 1 --start 12
 
 /**
  * @brief find contigous free blocks for request to mark them as used
@@ -228,6 +228,9 @@ fdDir *createDirectory(struct fs_diriteminfo *parent, char *name)
         strncpy(shortName, name, MAX_NAME_LENGTH - 1);
         shortName[MAX_NAME_LENGTH - 1] = '\0';
         strcpy(newDir->dirName, shortName);
+
+        free(shortName);
+        shortName = NULL;
     }
     else
     {
@@ -262,8 +265,6 @@ fdDir *createDirectory(struct fs_diriteminfo *parent, char *name)
         newDir->entryList[i].space = SPACE_FREE;
     }
 
-    // write the directory file psycially
-    updateDirectory(newDir);
     return newDir;
 }
 
@@ -411,19 +412,27 @@ fdDir *getRoot()
  */
 fdDir *fs_opendir(const char *name)
 {
-    // no need to worry pathname will be modified
-    // because getDirByPath() manipulate the copy of it
-    openedDir = getDirByPath((char *)name);
+
+    // copy the name to avoid modifying it
+    char *path = malloc(strlen(name) + 1);
+    if (path == NULL)
+    {
+        eprintf("malloc()");
+        return NULL;
+    }
+    strcpy(path, name);
+    openedDir = getDirByPath(path);
 
     // set the entry index to 0 for fs_readDir() works
     openedDirEntryIndex = 0;
 
-    // clear the temp used cwd and reset it
+    free(path);
+    path = NULL;
     return openedDir;
 }
 
 /**
- * @brief get a directory pointer from cwd (DO NOT modify pass in argument)
+ * @brief get a directory pointer from cwd
  * 
  * @param name name of the path
  * @return direcotry pointer, NULL for error or not found
@@ -616,6 +625,7 @@ int fs_closedir(fdDir *dirp)
 {
     free(dirp);
     openedDir = NULL;
+    openedDirEntryIndex = 0;
     return 0;
 }
 
@@ -776,7 +786,8 @@ int fs_mkdir(const char *pathname, mode_t mode)
         {
             if (parent->entryList[i].space == SPACE_USED && strcmp(parent->entryList[i].d_name, newDirName) == 0)
             {
-                printf("\nsame directory name existed!\n");
+                releaseFreespace(createdDir->directoryStartLocation, getBlockCount(createdDir->d_reclen));
+                printf("same directory name existed!\n");
 
                 // avoid memory leak
                 free(pathBeforeLastSlash);
@@ -801,6 +812,9 @@ int fs_mkdir(const char *pathname, mode_t mode)
                 parent->entryList[i].space = SPACE_USED;
                 parent->entryList[i].size = sizeof(fdDir);
                 strcpy(parent->entryList[i].d_name, createdDir->dirName);
+
+                // write the two changed files back into the disk
+                updateDirectory(createdDir);
                 updateDirectory(parent);
                 break;
             }
@@ -860,41 +874,44 @@ int fs_rmdir(const char *pathname)
 
     // remove directories other than . and ..
     // . links to this deleted file and .. links to the parent
-    for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
+    if (target->dirEntryAmount > 2)
     {
-        if (target->entryList[i].space == SPACE_USED)
+        for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
         {
-            // copy the path and cat with the entry name with slash
-            char *entryPath = malloc(strlen(pathname) + strlen(target->entryList[i].d_name) + 2);
-            if (entryPath == NULL)
+            if (target->entryList[i].space == SPACE_USED)
             {
-                eprintf("malloc() on entryPath");
-                return -1;
-            }
-            strcpy(entryPath, pathname);
-            strcat(entryPath, "/");
-            strcat(entryPath, target->entryList[i].d_name);
-
-            // either remove directory or delete file
-            if (fs_isDir(entryPath))
-            {
-                // fs_rmdir shouldn't fail so only check errors
-                if (fs_rmdir(entryPath) != 0)
-                { // stops removing the rest
-                    eprintf("fs_rmdir()");
+                // copy the path and cat with the entry name with slash
+                char *entryPath = malloc(strlen(pathname) + strlen(target->entryList[i].d_name) + 2);
+                if (entryPath == NULL)
+                {
+                    eprintf("malloc() on entryPath");
                     return -1;
                 }
-            }
-            // else if (fs_isFile(entryPath))
-            // {// stops removing the rest
-            // if (fs_delete(entryPath) != 0)
-            // {
-            //     return -1;
-            // }
-            // }
-            else
-            {
-                return -1;
+                strcpy(entryPath, pathname);
+                strcat(entryPath, "/");
+                strcat(entryPath, target->entryList[i].d_name);
+
+                // either remove directory or delete file
+                if (fs_isDir(entryPath))
+                {
+                    // fs_rmdir shouldn't fail so only check errors
+                    if (fs_rmdir(entryPath) != 0)
+                    {
+                        eprintf("fs_rmdir()");
+                        return -1;
+                    }
+                }
+                // else if (fs_isFile(entryPath))
+                // {
+                // if (fs_delete(entryPath) != 0)
+                // {
+                //     return -1;
+                // }
+                // }
+                else
+                {
+                    return -1;
+                }
             }
         }
     }
@@ -926,6 +943,16 @@ int fs_rmdir(const char *pathname)
     }
 
     printf("%s : %s was removed\n", pathname, target->dirName);
+
+    // testing freespace on removing
+    // printf("used block index: ");
+    // for (int i = 0; i < ourVCB->numberOfBlocks; i++)
+    // {
+    //     if (checkBit(i, freespace) == 1) {
+    //         printf("%d ", i);
+    //     }
+    // }
+    // printf("\n");
 
     free(target);
     free(parent);

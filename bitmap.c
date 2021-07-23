@@ -1,9 +1,5 @@
 #include "mfs.h"
 
-#define SPACE_FREE 0
-#define SPACE_USED 1
-#define BIT_SIZE_OF_INT (sizeof(int) * 8)
-
 int setUsed(uint64_t, int *bitmap);
 int setBitFree(uint64_t, int *bitmap);
 int checkBit(uint64_t, int *bitmap);

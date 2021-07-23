@@ -113,7 +113,7 @@ int fs_isDir(char *path)
 #define CMDMD_ON 1
 #define CMDRM_ON 1
 #define CMDCP2L_ON 0
-#define CMDCP2FS_ON 0
+#define CMDCP2FS_ON 1
 #define CMDCD_ON 1
 #define CMDPWD_ON 1
 
@@ -281,9 +281,11 @@ int cmd_ls(int argcnt, char *argvec[])
 	}
 	else // no pathname/filename specified - use cwd
 	{
-		char *path = fs_getcwd(cwd, DIRMAX_LEN); //get current working directory
+		// current path can be represented by simply ""
+		// we chose to ignore this to save coding
+		//char *path = fs_getcwd(cwd, DIRMAX_LEN); //get current working directory
 		fdDir *dirp;
-		dirp = fs_opendir(path);
+		dirp = fs_opendir("");
 		return (displayFiles(dirp, flall, fllong));
 	}
 #endif
@@ -505,7 +507,7 @@ int cmd_cp2fs(int argcnt, char *argvec[])
 
 	case 3:
 		src = argvec[1];
-		dest = argvec[2];
+		dest = argvec[2]; // NOTE: paste as this name in our volume
 		break;
 
 	default:
@@ -514,12 +516,26 @@ int cmd_cp2fs(int argcnt, char *argvec[])
 	}
 
 	testfs_fd = b_open(dest, O_WRONLY | O_CREAT | O_TRUNC);
+
+	if (testfs_fd < 0)
+	{
+		printf("%s not existed in volume\n", dest);
+		return -1;
+	}
+
 	linux_fd = open(src, O_RDONLY);
+	if (linux_fd < 0)
+	{
+		printf("%s is not a valid source\n", src);
+		return -1;
+	}
+
 	do
 	{
 		readcnt = read(linux_fd, buf, BUFFERLEN);
 		b_write(testfs_fd, buf, readcnt);
 	} while (readcnt == BUFFERLEN);
+
 	b_close(testfs_fd);
 	close(linux_fd);
 #endif

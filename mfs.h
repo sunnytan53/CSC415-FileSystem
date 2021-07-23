@@ -58,6 +58,12 @@ typedef u_int32_t uint32_t;
 #define eprintf(fmt, args...) fprintf(stderr, "\nERROR: %s:%d - %s(): " fmt, \
 									  __FILE__, __LINE__, __func__, ##args)
 
+
+// used with bitmap
+#define SPACE_FREE 0
+#define SPACE_USED 1
+#define BIT_SIZE_OF_INT (sizeof(int) * 8)
+
 #define TYPE_DIR 0
 #define TYPE_FILE 1
 #define MAX_NAME_LENGTH 256
@@ -65,21 +71,21 @@ struct fs_diriteminfo
 {
 	unsigned short d_reclen; /* length of this record */
 	unsigned char fileType;
-	unsigned char space;		 // determine this entry is free or used
-	uint64_t entryStartLocation;
-	uint64_t size;				 // the exact size of the file occupies
-	char d_name[MAX_NAME_LENGTH];			 /* filename max filename is 255 characters */
+	unsigned char space;		  // determine this entry is free or used
+	uint64_t entryStartLocation;  // LBA of the entry, either a file or directory
+	uint64_t size;				  // the exact size of the file occupies
+	char d_name[MAX_NAME_LENGTH]; /* filename max filename is 255 characters */
 };
 
-#define MAX_AMOUNT_OF_ENTRIES 10
+#define MAX_AMOUNT_OF_ENTRIES 8
 typedef struct
 {
 	unsigned short d_reclen;		 /*length of this record */
-	unsigned short dirEntryAmount;	 // amount of undeleted entries
-	// unsigned short dirEntryPosition; // we keep it as global value
 	uint64_t directoryStartLocation; /*Starting LBA of directory */
-	char dirName[MAX_NAME_LENGTH];				 // name of this directory
+	unsigned short dirEntryAmount;	 // amount of undeleted entries
+	char dirName[MAX_NAME_LENGTH];	 // name of this directory
 	struct fs_diriteminfo entryList[MAX_AMOUNT_OF_ENTRIES];
+	// unsigned short dirEntryPosition; // we keep it as global value
 } fdDir;
 
 typedef struct
