@@ -19,9 +19,9 @@
 #include <fcntl.h>
 
 int b_open(char *filename, int flags);
-int b_read(int fd, char *buffer, int count);
-int b_write(int fd, char *buffer, int count);
-//int b_seek(int fd, off_t offset, int whence);
-void b_close(int fd);
+int b_read(int argfd, char *buffer, int count);
+int b_write(int argfd, char *buffer, int count);
+void b_close(int argfd);
+void writeIntoVolume(int argfd);
 
 #endif

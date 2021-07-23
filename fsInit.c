@@ -86,8 +86,27 @@ int initFileSystem(uint64_t numberOfBlocks, uint64_t blockSize)
 		}
 		memcpy(freespace, readBuffer, ourVCB->numberOfBlocks);
 
+		// free the buffer for reuse
+		free(readBuffer);
+		readBuffer = NULL;
+
 		// get the root directory as cwd
-		fsCWD = getRoot();
+		readBuffer = malloc(getBlockCount(sizeof(fdDir)) * ourVCB->blockSize);
+		if (readBuffer == NULL)
+		{
+			eprintf("malloc() on readBuffer");
+			return -1;
+		}
+		LBAread(readBuffer, getBlockCount(sizeof(fdDir)), ourVCB->rootDirLocation);
+
+		// malloc() the root directory pointer and copy the data in
+		fsCWD = malloc(sizeof(fdDir));
+		if (fsCWD == NULL)
+		{
+			eprintf("malloc() on root");
+			return -1;
+		}
+		memcpy(fsCWD, readBuffer, sizeof(fdDir));
 
 		free(readBuffer);
 		readBuffer = NULL;
@@ -125,6 +144,7 @@ int initFileSystem(uint64_t numberOfBlocks, uint64_t blockSize)
 
 	// setting the other status in memory
 	openedDir = NULL;
+	openedDirEntryIndex = 0;
 
 	return 0;
 }
@@ -204,8 +224,8 @@ int initRootDir()
 		return -1;
 	}
 
-    // write the directory file psycially
-    updateDirectory(retDir);
+	// write the directory file psycially
+	updateDirectory(retDir);
 
 	// set the root directory as cwd
 	fsCWD = retDir;

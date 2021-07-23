@@ -110,7 +110,6 @@ uint getBlockCount(uint64_t);
 fdDir *getDirByPath(char *);
 char *getPathByLastSlash(char *);
 fdDir *getDirByEntry(struct fs_diriteminfo *);
-fdDir *getRoot();
 int releaseFreespace(uint64_t, uint64_t);
 
 // global values to keep track on our file system

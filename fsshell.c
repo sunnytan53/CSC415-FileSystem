@@ -108,11 +108,11 @@ int fs_isDir(char *path)
 
 /****   SET THESE TO 1 WHEN READY TO TEST THAT COMMAND ****/
 #define CMDLS_ON 1
-#define CMDCP_ON 0
-#define CMDMV_ON 0
+#define CMDCP_ON 1
+#define CMDMV_ON 1
 #define CMDMD_ON 1
 #define CMDRM_ON 1
-#define CMDCP2L_ON 0
+#define CMDCP2L_ON 1
 #define CMDCP2FS_ON 1
 #define CMDCD_ON 1
 #define CMDPWD_ON 1
@@ -325,6 +325,7 @@ int cmd_cp(int argcnt, char *argvec[])
 
 	testfs_src_fd = b_open(src, O_RDONLY);
 	testfs_dest_fd = b_open(dest, O_WRONLY | O_CREAT | O_TRUNC);
+
 	do
 	{
 		readcnt = b_read(testfs_src_fd, buf, BUFFERLEN);
@@ -342,8 +343,7 @@ int cmd_cp(int argcnt, char *argvec[])
 int cmd_mv(int argcnt, char *argvec[])
 {
 #if (CMDMV_ON == 1)
-	return -99;
-	// **** TODO ****  For you to implement
+
 	char buf[BUFFERLEN];
 	int readCount, writeCount;
 	int test_fdsrc, test_fddest;
@@ -362,7 +362,7 @@ int cmd_mv(int argcnt, char *argvec[])
 		break;
 
 	default:
-		printf("Usage: mv srcfile [destfile]\n");
+		printf("Usage: mv srcfile destfile\n");
 		return (-1);
 	}
 
@@ -387,7 +387,11 @@ int cmd_mv(int argcnt, char *argvec[])
 	b_close(test_fdsrc);
 	b_close(test_fddest);
 
-	fs_delete(src);
+	// only delete the source if we do move the file
+	if (readCount > 0)
+	{
+		fs_delete(src);
+	}
 
 #endif
 	return 0;
@@ -432,10 +436,10 @@ int cmd_rm(int argcnt, char *argvec[])
 	{
 		return (fs_rmdir(path));
 	}
-	// if (fs_isFile(path))
-	// {
-	// 	return (fs_delete(path));
-	// }
+	if (fs_isFile(path))
+	{
+		return (fs_delete(path));
+	}
 
 	printf("The path %s is neither a file not a directory\n", path);
 #endif
@@ -473,7 +477,16 @@ int cmd_cp2l(int argcnt, char *argvec[])
 	}
 
 	testfs_fd = b_open(src, O_RDONLY);
-	linux_fd = open(dest, O_WRONLY | O_CREAT | O_TRUNC);
+
+	// NOTE: must add 0777 for permission to read the output data
+	// but this is for user to decide, so can be changed if needed
+	linux_fd = open(dest, O_WRONLY | O_CREAT | O_TRUNC, 0x0777);
+	if (linux_fd < 0)
+	{
+		printf("%s is not a valid destination\n", dest);
+		return -1;
+	}
+
 	do
 	{
 		readcnt = b_read(testfs_fd, buf, BUFFERLEN);
@@ -481,6 +494,12 @@ int cmd_cp2l(int argcnt, char *argvec[])
 	} while (readcnt == BUFFERLEN);
 	b_close(testfs_fd);
 	close(linux_fd);
+
+	// delete the file because it is not really copying data
+	if (readcnt < 0)
+	{
+		remove(dest);
+	}
 #endif
 	return 0;
 }
@@ -516,7 +535,6 @@ int cmd_cp2fs(int argcnt, char *argvec[])
 	}
 
 	testfs_fd = b_open(dest, O_WRONLY | O_CREAT | O_TRUNC);
-
 	if (testfs_fd < 0)
 	{
 		printf("%s not existed in volume\n", dest);

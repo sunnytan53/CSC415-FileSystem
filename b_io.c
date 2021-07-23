@@ -8,7 +8,7 @@
 #include <pthread.h>
 
 #define MAXFCBS 20
-#define BUFSIZE 512
+#define B_CHUNK_SIZE 512
 #define FUNC_READ 1
 #define FUNC_WRITE 2
 
@@ -17,13 +17,13 @@ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct b_fcb
 {
-	int linuxFd;			   // holds the systems file descriptor
-	char *buf;				   // holds the open file buffer
-	uint64_t index;			   // holds current index of the buffer
-	uint64_t buflen;		   // holds how many valid bytes are in the buffer
-	fdDir *parent;			   // holds the parent directory of the file
-	unsigned short entryIndex; // holds the index of the entry in directory
-	unsigned char detector;	   // holds a value to detect its functionality
+	int fd;					 // holds the systems file descriptor
+	char *buf;				 // holds the open file buffer
+	uint64_t index;			 // holds current index of the buffer
+	uint64_t buflen;		 // holds how many valid bytes are in the buffer
+	fdDir *parent;			 // holds the parent directory of the file
+	char *trueFileName;		 // holds the true file name not the path
+	unsigned short detector; // holds the functionality of the method
 } b_fcb;
 
 b_fcb fcbArray[MAXFCBS];
@@ -36,7 +36,7 @@ void b_init()
 	//init fcbArray to all free
 	for (int i = 0; i < MAXFCBS; i++)
 	{
-		fcbArray[i].linuxFd = -1; //indicates a free fcbArray
+		fcbArray[i].fd = -1; //indicates a free fcbArray
 	}
 
 	startup = 1;
@@ -47,10 +47,10 @@ int b_getFCB()
 {
 	for (int i = 0; i < MAXFCBS; i++)
 	{
-		if (fcbArray[i].linuxFd == -1)
+		if (fcbArray[i].fd == -1)
 		{
-			fcbArray[i].linuxFd = -2; // used but not assigned
-			return i;				  //Not thread safe
+			fcbArray[i].fd = -2; // used but not assigned
+			return i;			 //Not thread safe
 		}
 	}
 	return (-1); //all in use
@@ -58,7 +58,7 @@ int b_getFCB()
 
 // Interface to open a buffered file
 // Modification of interface for this assignment, flags match the Linux flags for open
-// O_RDONLY, O_WRONLY, or O_RDWR didn't use
+// O_RDONLY, O_WRONLY, or O_RDWR didn't implement, just use default
 int b_open(char *path, int flags)
 {
 	//don't call b_close() since that requires an initialized fcb
@@ -74,12 +74,12 @@ int b_open(char *path, int flags)
 
 	// get our own file descriptor
 	int returnFd = b_getFCB();
-	if (fcbArray[returnFd].linuxFd != -2)
+	if (fcbArray[returnFd].fd != -2)
 	{ // unexpected error
 		eprintf("b_getFCB()");
 		return -1;
 	}
-	fcbArray[returnFd].linuxFd = returnFd; // Save the linux file descriptor
+	fcbArray[returnFd].fd = returnFd; // Save the linux file descriptor
 
 	// unlock the mutex and handle error
 	if (pthread_mutex_unlock(&mutex) < 0)
@@ -88,7 +88,8 @@ int b_open(char *path, int flags)
 		return -1;
 	}
 
-	// NOTE: we assume the destination may hold path so we will do something like fs_mkdir()
+	// NOTE: we assume the destination may hold path
+	// so we will do something like fs_mkdir()
 	char *pathBeforeLastSlash = malloc(strlen(path) + 1);
 	if (pathBeforeLastSlash == NULL)
 	{
@@ -96,19 +97,17 @@ int b_open(char *path, int flags)
 		return -1;
 	}
 	strcpy(pathBeforeLastSlash, path);
-	char *trueFileName = getPathByLastSlash(pathBeforeLastSlash);
+	fcbArray[returnFd].trueFileName = getPathByLastSlash(pathBeforeLastSlash);
 
 	// find the directory that is going to store the file
 	fcbArray[returnFd].parent = getDirByPath(pathBeforeLastSlash);
 
 	// error handle and avaliable space check
-	if (fcbArray[returnFd].parent == NULL || fcbArray[returnFd].parent->dirEntryAmount > MAX_AMOUNT_OF_ENTRIES)
+	if (fcbArray[returnFd].parent == NULL)
 	{ // avoiding memory leak
-		fcbArray[returnFd].linuxFd = -1;
+		fcbArray[returnFd].fd = -1;
 		free(pathBeforeLastSlash);
-		free(trueFileName);
 		pathBeforeLastSlash = NULL;
-		trueFileName = NULL;
 		return -1;
 	}
 
@@ -116,180 +115,152 @@ int b_open(char *path, int flags)
 	free(pathBeforeLastSlash);
 	pathBeforeLastSlash = NULL;
 
-	// find the first avaliable space
-	for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
-	{
-		if (fcbArray[returnFd].parent->entryList[i].space == SPACE_FREE)
-		{
-			fcbArray[returnFd].entryIndex = i;
-
-			// copy the string into the item info
-			fcbArray[returnFd].parent->entryList[i].d_reclen = sizeof(struct fs_diriteminfo);
-			fcbArray[returnFd].parent->entryList[i].fileType = TYPE_FILE;
-			fcbArray[returnFd].parent->entryList[i].space = SPACE_USED;
-
-			// truncate the name if it exceeds the max length
-			// slightly different than the directory one
-			if (strlen(trueFileName) > (MAX_NAME_LENGTH - 1))
-			{
-				char *shortName = malloc(MAX_NAME_LENGTH);
-				if (shortName == NULL)
-				{
-					eprintf("malloc() on shortName");
-					return -1;
-				}
-
-				// make sure it only contains one less than the max for null terminator
-				strncpy(shortName, trueFileName, MAX_NAME_LENGTH - 1);
-				shortName[MAX_NAME_LENGTH - 1] = '\0';
-
-				free(trueFileName);
-				trueFileName = shortName;
-			}
-			strcpy(fcbArray[returnFd].parent->entryList[i].d_name, trueFileName);
-			break;
-		}
-	}
-
-	// free the unused buffer
-	free(trueFileName);
-	trueFileName = NULL;
-
-	// allocate our buffer
-	fcbArray[returnFd].buf = malloc(BUFSIZE);
-	if (fcbArray[returnFd].buf == NULL)
-	{
-		eprintf("malloc() on fcbArray[returnFd].buf");
-		fcbArray[returnFd].linuxFd = -1;
-		return -1;
-	}
-
+	// allocate our buffer later because b_read() and b_write() has different situation
 	// have not read anything yet
-	fcbArray[returnFd].buflen = BUFSIZE;
+	fcbArray[returnFd].buflen = 0;
 	fcbArray[returnFd].index = 0;
 	fcbArray[returnFd].detector = 0;
 	return (returnFd); // all set
 }
 
-// Filling the callers request is broken into three parts
-// Part 1 is what can be filled from the current buffer, which may or may not be enough
-// Part 2 is after using what was left in our buffer there is still 1 or more block
-//        size chunks needed to fill the callers request.  This represents the number of
-//        bytes in multiples of the blocksize.
-// Part 3 is a value less than blocksize which is what remains to copy to the callers buffer
-//        after fulfilling part 1 and part 2.  This would always be filled from a refill
-//        of our buffer.
-//  +-------------+------------------------------------------------+--------+
-//  |             |                                                |        |
-//  | filled from |  filled direct in multiples of the block size  | filled |
-//  | existing    |                                                | from   |
-//  | buffer      |                                                |refilled|
-//  |             |                                                | buffer |
-//  |             |                                                |        |
-//  | Part1       |  Part 2                                        | Part3  |
-//  +-------------+------------------------------------------------+--------+
-
 // Interface to read a buffer
-// int b_read(int fd, char *buffer, int count)
-// {
-// 	int bytesRead;			 // for our reads
-// 	int bytesReturned;		 // what we will return
-// 	int part1, part2, part3; // holds the three potential copy lengths
 
-// 	if (startup == 0)
-// 		b_init(); //Initialize our system
-
-// 	// check that fd is between 0 and (MAXFCBS-1)
-// 	if ((fd < 0) || (fd >= MAXFCBS))
-// 	{
-// 		return (-1); //invalid file descriptor
-// 	}
-
-// 	if (fcbArray[fd].linuxFd == -1) //File not open for this descriptor
-// 	{
-// 		return -1;
-// 	}
-
-// 	// number of bytes available to copy from buffer
-// 	int remain = fcbArray[fd].buflen - fcbArray[fd].index;
-// 	part3 = 0;			 //only used if count > BUFSIZE
-// 	if (remain >= count) //we have enough in buffer
-// 	{
-// 		part1 = count; // completely buffered
-// 		part2 = 0;
-// 	}
-// 	else
-// 	{
-// 		part1 = remain; //spanning buffer (or first read)
-// 		part2 = count - remain;
-// 	}
-
-// 	if (part1 > 0) // memcpy part 1
-// 	{
-// 		memcpy(buffer, fcbArray[fd].buf + fcbArray[fd].index, part1);
-// 		fcbArray[fd].index = fcbArray[fd].index + part1;
-// 	}
-
-// 	if (part2 > 0) //We need to read to copy more bytes to user
-// 	{
-// 		// Handle special case where user is asking for more than a buffer worth
-// 		if (part2 > BUFSIZE)
-// 		{
-// 			int blocks = part2 / BUFSIZE; // calculate number of blocks they want
-// 			bytesRead = read(fcbArray[fd].linuxFd, buffer + part1, blocks * BUFSIZE);
-// 			part3 = bytesRead;
-// 			part2 = part2 - part3; //part 2 is now < BUFSIZE, or file is exhausted
-// 		}
-
-// 		//try to read BUFSIZE bytes into our buffer
-// 		bytesRead = read(fcbArray[fd].linuxFd, fcbArray[fd].buf, BUFSIZE);
-
-// 		// error handling here...  if read fails
-
-// 		fcbArray[fd].index = 0;
-// 		fcbArray[fd].buflen = bytesRead; //how many bytes are actually in buffer
-
-// 		if (bytesRead < part2) // not even enough left to satisfy read
-// 			part2 = bytesRead;
-
-// 		if (part2 > 0) // memcpy bytesRead
-// 		{
-// 			memcpy(buffer + part1 + part3, fcbArray[fd].buf + fcbArray[fd].index, part2);
-// 			fcbArray[fd].index = fcbArray[fd].index + part2;
-// 		}
-// 	}
-// 	bytesReturned = part1 + part2 + part3;
-// 	return (bytesReturned);
-// }
-
-// Interface to write a buffer
-int b_write(int fd, char *buffer, int count)
+// we chose to rewrite b_read() so it fits with fsshell.c
+// we could use the template to read all bytes into buffer
+// but this is not consistent with the lixux read()
+// so we only read one block each call which is the same as linex read()
+int b_read(int argfd, char *buffer, int count)
 {
 	if (startup == 0)
 		b_init(); //Initialize our system
 
-	// check that fd is between 0 and (MAXFCBS-1)
-	if ((fd < 0) || (fd >= MAXFCBS))
+	if ((argfd < 0) || (argfd >= MAXFCBS) || fcbArray[argfd].fd == -1 || count < 0)
 	{
-		return (-1); //invalid file descriptor
+		return (-1);
 	}
 
-	// file not open for this descriptor
-	if (fcbArray[fd].linuxFd == -1)
+	// initialize the detector the first time it calls this function
+	// and find the file and records its data and size for reading
+	if (fcbArray[argfd].detector == 0)
 	{
+		fcbArray[argfd].detector = FUNC_READ;
+		int i = 2;
+		for (; i < MAX_AMOUNT_OF_ENTRIES; i++)
+		{
+			if (fcbArray[argfd].parent->entryList[i].space == SPACE_USED &&
+				fcbArray[argfd].parent->entryList[i].fileType == TYPE_FILE &&
+				strcmp(fcbArray[argfd].parent->entryList[i].d_name, fcbArray[argfd].trueFileName) == 0)
+			{
+				// since we are giving a buffer, the size will be buflen
+				fcbArray[argfd].buflen = fcbArray[argfd].parent->entryList[i].size;
+
+				// NOTE: this can easily cause problem if buffer size is different
+				// must keep LBAread(), vcb, and b_io's buffer size the same
+				// getBlockCount() depends on vcb's buffer size
+				uint blockCount = getBlockCount(fcbArray[argfd].buflen);
+				fcbArray[argfd].buf = malloc(blockCount * B_CHUNK_SIZE);
+				if (fcbArray[argfd].buf == NULL)
+				{
+					eprintf("malloc() on fcbArray[argfd].buf");
+					fcbArray[argfd].fd = -1;
+					return -1;
+				}
+
+				// reading the data into the buffer for outside to read
+				LBAread(fcbArray[argfd].buf, blockCount, fcbArray[argfd].parent->entryList[i].entryStartLocation);
+				break;
+			}
+		}
+
+		// handle error of not find files
+		if (i == MAX_AMOUNT_OF_ENTRIES)
+		{
+			printf("\n%s is not existed in volume\n", fcbArray[argfd].trueFileName);
+			return -1;
+		}
+	}
+
+	// it shouldn't do another functionality
+	if (fcbArray[argfd].detector != FUNC_READ)
+	{
+		eprintf("no mix use of functionality!");
 		return -1;
 	}
 
-	// initialize the detector
-	if (fcbArray[fd].detector == 0)
+	// two conditions based on the remianing bytes
+	// NOTE: since it is outside buffer reading, we use the its size, which is count
+	int bytesToRead = 0;
+	uint64_t remainingBytes = fcbArray[argfd].buflen - fcbArray[argfd].index;
+	if (remainingBytes != 0)
 	{
-		fcbArray[fd].detector = FUNC_WRITE;
+		if (remainingBytes > count)
+		{
+			bytesToRead = count;
+		}
+		else
+		{
+			bytesToRead = remainingBytes;
+		}
+		ldprintf("bytesToRead: %d", bytesToRead);
+
+		// copy the data using index as offset to change start location
+		memcpy(buffer, fcbArray[argfd].buf + fcbArray[argfd].index, bytesToRead);
+		fcbArray[argfd].index += bytesToRead;
+	}
+	return bytesToRead;
+}
+
+// Interface to write a buffer
+int b_write(int argfd, char *buffer, int count)
+{
+	if (startup == 0)
+		b_init(); //Initialize our system
+
+	if ((argfd < 0) || (argfd >= MAXFCBS) || fcbArray[argfd].fd == -1 || count < 0)
+	{
+		return (-1);
 	}
 
-	// it shouldn't do another functionalities
-	if (fcbArray[fd].detector != FUNC_WRITE)
+	// initialize the detector the first time it calls this function
+	if (fcbArray[argfd].detector == 0)
 	{
-		eprintf("no mix use of functionalities!");
+		fcbArray[argfd].detector = FUNC_WRITE;
+
+		// check if there is no more place to store files in parent directory
+		if (fcbArray[argfd].parent->dirEntryAmount >= MAX_AMOUNT_OF_ENTRIES)
+		{
+			fcbArray[argfd].fd = -1;
+			return -1;
+		}
+
+		// check if there is already a same name of file
+		for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
+		{
+			if (fcbArray[argfd].parent->entryList[i].space == SPACE_USED &&
+				fcbArray[argfd].parent->entryList[i].fileType == TYPE_FILE &&
+				strcmp(fcbArray[argfd].parent->entryList[i].d_name, fcbArray[argfd].trueFileName) == 0)
+			{
+				printf("\nsame name of file existed\n");
+				fcbArray[argfd].fd = -1;
+				return -1;
+			}
+		}
+
+		// allocate the buffer with the first size
+		fcbArray[argfd].buf = malloc(B_CHUNK_SIZE);
+		if (fcbArray[argfd].buf == NULL)
+		{
+			eprintf("malloc() on fcbArray[returnFd].buf");
+			fcbArray[argfd].fd = -1;
+			return -1;
+		}
+		fcbArray[argfd].buflen += B_CHUNK_SIZE;
+	}
+
+	// it shouldn't do another functionality
+	if (fcbArray[argfd].detector != FUNC_WRITE)
+	{
+		eprintf("no mix use of functionality!");
 		return -1;
 	}
 
@@ -298,95 +269,113 @@ int b_write(int fd, char *buffer, int count)
 	if (count != 0)
 	{
 		// calculate the index to determine realloc()
-		uint64_t newIndex = fcbArray[fd].index + count;
-		if (newIndex > fcbArray[fd].buflen)
+		uint64_t newIndex = fcbArray[argfd].index + count;
+		if (newIndex > fcbArray[argfd].buflen)
 		{
 			// realloc() with the new length
-			fcbArray[fd].buflen += BUFSIZE;
-			fcbArray[fd].buf = realloc(fcbArray[fd].buf, fcbArray[fd].buflen);
-			if (fcbArray[fd].buf == NULL)
+			fcbArray[argfd].buflen += B_CHUNK_SIZE;
+			fcbArray[argfd].buf = realloc(fcbArray[argfd].buf, fcbArray[argfd].buflen);
+			if (fcbArray[argfd].buf == NULL)
 			{
-				eprintf("realloc() on fcbArray[fd].buf");
+				eprintf("realloc() on fcbArray[argfd].buf");
 				return -1;
 			}
 		}
 
 		// copy into our buffer and set the new index
-		memcpy(fcbArray[fd].buf + fcbArray[fd].index, buffer, count);
-		fcbArray[fd].index = newIndex;
+		memcpy(fcbArray[argfd].buf + fcbArray[argfd].index, buffer, count);
+		fcbArray[argfd].index = newIndex;
 	}
 	return 0;
 }
 
-//moves offset based on whence and returns the resulting offset
-// int b_seek(int fd, off_t offset, int whence)
-// {
-// 	//set num to return based on offset and whence
-// 	int num;
-// 	if (whence == SEEK_SET)
-// 	{
-// 		num = offset;
-// 	}
-// 	else if (whence == SEEK_CUR)
-// 	{
-// 		num = offset + ((fcbArray[fd].block - 1) * BUFSIZE);
-// 	}
-// 	else if (whence == SEEK_END)
-// 	{
-// 		num = offset + fcbArray[fd].file->sizeInBytes;
-// 	}
-
-// 	//move the file offset
-// 	int block = num / BUFSIZE;
-// 	int off = num % BUFSIZE;
-// 	int index = fcbArray[fd].file->directBlockPointers[block - 1];
-
-// 	LBAread(fcbArray[fd].buf, 1, index);
-// 	fcbArray[fd].offset = off;
-
-// 	return num;
-// }
-
 // Interface to Close the file
+
 // we decide to do the allocation here since it is easy to check the condition
-void b_close(int fd)
+void b_close(int argfd)
 {
-	if (fcbArray[fd].detector == FUNC_WRITE)
+	if (fcbArray[argfd].fd != -1)
 	{
-		// set the size as the index
-		// no need to add 1 because it is the next index not the last
-		fcbArray[fd].parent->entryList[fcbArray[fd].entryIndex].size = fcbArray[fd].index;
-
-		// allocate the space in memory and use it for LBAwrite()
-		uint blockCount = getBlockCount(fcbArray[fd].index);
-		uint start = allocateFreespace(blockCount);
-		if (start == -1)
-		{ // stop allocating and mark the entry as free
-			fcbArray[fd].parent->entryList[fcbArray[fd].entryIndex].space = SPACE_FREE;
-
-			// avoid memory leaking
-			fcbArray[fd].linuxFd = -1;
-			free(fcbArray[fd].buf);
-			fcbArray[fd].buf = NULL;
+		if (fcbArray[argfd].detector == FUNC_WRITE)
+		{
+			writeIntoVolume(argfd);
 		}
-
-		// write the file into the volume and set start location for the entry
-		fcbArray[fd].parent->entryList[fcbArray[fd].entryIndex].entryStartLocation = start;
-		LBAwrite(fcbArray[fd].buf, blockCount, start);
-
-		// update the directory 
-		updateDirectory(fcbArray[fd].parent);
+		else if (fcbArray[argfd].detector == FUNC_READ)
+		{
+			// do nothing, just make sure the detector is correct
+		}
+		else
+		{
+			// do not free because this means not initialized
+			return;
+		}
 	}
-	else if (fcbArray[fd].detector == FUNC_READ)
+
+	// free all associated malloc() pointer
+	free(fcbArray[argfd].buf);
+	free(fcbArray[argfd].parent);
+	free(fcbArray[argfd].trueFileName);
+	fcbArray[argfd].buf = NULL;
+	fcbArray[argfd].parent = NULL;
+	fcbArray[argfd].trueFileName = NULL;
+	fcbArray[argfd].fd = -1;
+}
+
+// this function is only for b_write() to work (look at b_close())
+// b_close() will be responsible to check if there is avaliable space
+// this fucntion is only responisble to write into volume
+void writeIntoVolume(int argfd)
+{
+	// find the first avaliable space and put it in
+	for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
 	{
-	}
-	else
-	{
-		eprintf("unexpected detector");
-		return;
-	}
+		if (fcbArray[argfd].parent->entryList[i].space == SPACE_FREE)
+		{
+			// allocate the space in memory and use it for LBAwrite()
+			uint blockCount = getBlockCount(fcbArray[argfd].index);
+			uint64_t start = allocateFreespace(blockCount);
+			if (start == -1)
+			{ // avoid memory leaking
+				eprintf("allocateFreespace() on start");
+				fcbArray[argfd].fd = -1;
+				free(fcbArray[argfd].buf);
+				fcbArray[argfd].buf = NULL;
+			}
 
-	free(fcbArray[fd].buf);	   // free the associated buffer
-	fcbArray[fd].buf = NULL;   // Safety First
-	fcbArray[fd].linuxFd = -1; // return this FCB to list of available FCB's
+			// write the file into the volume and set start location for the entry
+			fcbArray[argfd].parent->entryList[i].entryStartLocation = start;
+			LBAwrite(fcbArray[argfd].buf, blockCount, start);
+
+			// now we need to add the info into the entry list
+			fcbArray[argfd].parent->dirEntryAmount++;
+			fcbArray[argfd].parent->entryList[i].d_reclen = sizeof(struct fs_diriteminfo);
+			fcbArray[argfd].parent->entryList[i].fileType = TYPE_FILE;
+			fcbArray[argfd].parent->entryList[i].space = SPACE_USED;
+			fcbArray[argfd].parent->entryList[i].size = fcbArray[argfd].index;
+
+			// truncate the name if it exceeds the max length
+			// slightly different than the directory one
+			if (strlen(fcbArray[argfd].trueFileName) > (MAX_NAME_LENGTH - 1))
+			{
+				char *shortName = malloc(MAX_NAME_LENGTH);
+				if (shortName == NULL)
+				{ // unexpected error
+					eprintf("malloc() on shortName");
+					return;
+				}
+
+				// make sure it only contains one less than the max for null terminator
+				strncpy(shortName, fcbArray[argfd].trueFileName, MAX_NAME_LENGTH - 1);
+				shortName[MAX_NAME_LENGTH - 1] = '\0';
+
+				free(fcbArray[argfd].trueFileName);
+				fcbArray[argfd].trueFileName = shortName;
+			}
+			strcpy(fcbArray[argfd].parent->entryList[i].d_name, fcbArray[argfd].trueFileName);
+
+			// update the directory
+			updateDirectory(fcbArray[argfd].parent);
+			break;
+		}
+	}
 }

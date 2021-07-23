@@ -81,7 +81,7 @@ uint64_t allocateFreespace(uint64_t requestedBlock)
     }
 
     // not enough space
-    printf("not enough space");
+    printf("\nNOT enough space\n");
     return -1;
 }
 
@@ -113,7 +113,19 @@ int updateFreespace()
     }
 
     // starts right behind vcb
-    return updateByLBAwrite(freespace, bytes, ourVCB->vcbBlockCount);
+    int retVal = updateByLBAwrite(freespace, bytes, ourVCB->vcbBlockCount);
+
+    // testing freespace on removing
+    printf("\nused block index: ");
+    for (int i = 0; i < ourVCB->numberOfBlocks; i++)
+    {
+        if (checkBit(i, freespace) == 1)
+        {
+            printf("%d ", i);
+        }
+    }
+
+    return retVal;
 }
 
 /**
@@ -307,10 +319,12 @@ int fs_isFile(char *path)
     if (retPtr != NULL)
     {
         // check if the item is inside this directory
-        for (int i = 0; i < MAX_AMOUNT_OF_ENTRIES; i++)
+        for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
         { // make sure that is a used space, a directory and name matched
             // todo seperate into three lines
-            if (retPtr->entryList[i].space == SPACE_USED && retPtr->entryList[i].fileType == TYPE_FILE && strcmp(retPtr->entryList[i].d_name, filename) == 0)
+            if (retPtr->entryList[i].space == SPACE_USED &&
+                retPtr->entryList[i].fileType == TYPE_FILE &&
+                strcmp(retPtr->entryList[i].d_name, filename) == 0)
             {
                 result = 1;
             }
@@ -372,36 +386,6 @@ int fs_isDir(char *path)
 
     free(retPtr);
     return result;
-}
-
-/**
- * @brief get the root directory pointer
- * 
- * @return a pointer to root directory in memory
- */
-fdDir *getRoot()
-{
-    // read the root directory into buffer
-    char *readBuffer = malloc(getBlockCount(sizeof(fdDir)) * ourVCB->blockSize);
-    if (readBuffer == NULL)
-    {
-        eprintf("malloc() on readBuffer");
-        return NULL;
-    }
-    LBAread(readBuffer, getBlockCount(sizeof(fdDir)), ourVCB->rootDirLocation);
-
-    // malloc() the root directory pointer and copy the data in
-    fdDir *root = malloc(sizeof(fdDir));
-    if (root == NULL)
-    {
-        eprintf("malloc() on root");
-        return NULL;
-    }
-    memcpy(root, readBuffer, sizeof(fdDir));
-
-    free(readBuffer);
-    readBuffer = NULL;
-    return root;
 }
 
 /**
@@ -475,7 +459,9 @@ fdDir *getDirByPath(char *name)
             int i = 1;
             for (; i < MAX_AMOUNT_OF_ENTRIES; i++)
             { // make sure that is a used space, a directory and name matched
-                if (getDir->entryList[i].space == SPACE_USED && getDir->entryList[i].fileType == TYPE_DIR && strcmp(getDir->entryList[i].d_name, token) == 0)
+                if (getDir->entryList[i].space == SPACE_USED &&
+                    getDir->entryList[i].fileType == TYPE_DIR &&
+                    strcmp(getDir->entryList[i].d_name, token) == 0)
                 {
                     free(getDir);
                     getDir = getDirByEntry(getDir->entryList + i);
@@ -485,7 +471,7 @@ fdDir *getDirByPath(char *name)
 
             // if it didn't find a directory, which should fail
             if (i == MAX_AMOUNT_OF_ENTRIES)
-            {
+            { // notice this is an exepected error!!!
                 return NULL;
             }
         }
@@ -641,7 +627,8 @@ int fs_stat(const char *path, struct fs_stat *buf)
     // should not fail because it is using with a existed directory
     for (int i = 0; i < MAX_AMOUNT_OF_ENTRIES; i++)
     {
-        if (openedDir->entryList[i].space == SPACE_USED && strcmp(openedDir->entryList[i].d_name, path) == 0)
+        if (openedDir->entryList[i].space == SPACE_USED &&
+            strcmp(openedDir->entryList[i].d_name, path) == 0)
         {
             buf->st_blksize = ourVCB->blockSize;
             buf->st_size = openedDir->entryList[i].size;
@@ -782,12 +769,15 @@ int fs_mkdir(const char *pathname, mode_t mode)
         fdDir *createdDir = createDirectory(parent->entryList, newDirName);
 
         // skip if it has same name with existed one
+        // NOTE: must check all, because we don't want user to create . and .. !!!
         for (int i = 0; i < MAX_AMOUNT_OF_ENTRIES; i++)
         {
-            if (parent->entryList[i].space == SPACE_USED && strcmp(parent->entryList[i].d_name, newDirName) == 0)
+            if (parent->entryList[i].space == SPACE_USED &&
+                parent->entryList[i].fileType == TYPE_DIR &&
+                strcmp(parent->entryList[i].d_name, newDirName) == 0)
             {
                 releaseFreespace(createdDir->directoryStartLocation, getBlockCount(createdDir->d_reclen));
-                printf("same directory name existed!\n");
+                printf("\nsame name of directory existed!\n");
 
                 // avoid memory leak
                 free(pathBeforeLastSlash);
@@ -843,9 +833,19 @@ int fs_mkdir(const char *pathname, mode_t mode)
  */
 int fs_rmdir(const char *pathname)
 {
-    // no need to worry pathname will be modified
-    // because getDirByPath() manipulate the copy of it
-    fdDir *target = getDirByPath((char *)pathname);
+    // find the directory to delete
+    char *path = malloc(strlen(pathname) + 1);
+    if (path == NULL)
+    {
+        eprintf("malloc() on path");
+        return -1;
+    }
+    strcpy(path, pathname);
+    fdDir *target = getDirByPath(path);
+
+    // free the unused buffer
+    free(path);
+    path = NULL;
 
     // we can't remove a unexisited directory or the root directory
     if (target == NULL)
@@ -860,7 +860,6 @@ int fs_rmdir(const char *pathname)
         // avoid memory leak
         free(target);
         target = NULL;
-
         return -1;
     }
 
@@ -901,13 +900,13 @@ int fs_rmdir(const char *pathname)
                         return -1;
                     }
                 }
-                // else if (fs_isFile(entryPath))
-                // {
-                // if (fs_delete(entryPath) != 0)
-                // {
-                //     return -1;
-                // }
-                // }
+                else if (fs_isFile(entryPath))
+                {
+                    if (fs_delete(entryPath) != 0)
+                    {
+                        return -1;
+                    }
+                }
                 else
                 {
                     return -1;
@@ -924,9 +923,11 @@ int fs_rmdir(const char *pathname)
     }
 
     // find the entry in the parent and set it as free
-    for (int i = 0; i < MAX_AMOUNT_OF_ENTRIES; i++)
+    for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
     {
-        if (strcmp(parent->entryList[i].d_name, target->dirName) == 0)
+        if (parent->entryList[i].space == SPACE_USED &&
+            parent->entryList[i].fileType == TYPE_DIR &&
+            strcmp(parent->entryList[i].d_name, target->dirName) == 0)
         {
             parent->entryList[i].space = SPACE_FREE;
             parent->dirEntryAmount--;
@@ -942,17 +943,7 @@ int fs_rmdir(const char *pathname)
         return -1;
     }
 
-    printf("%s : %s was removed\n", pathname, target->dirName);
-
-    // testing freespace on removing
-    // printf("used block index: ");
-    // for (int i = 0; i < ourVCB->numberOfBlocks; i++)
-    // {
-    //     if (checkBit(i, freespace) == 1) {
-    //         printf("%d ", i);
-    //     }
-    // }
-    // printf("\n");
+    printf("\n%s : %s was removed\n", pathname, target->dirName);
 
     free(target);
     free(parent);
@@ -1006,5 +997,70 @@ int releaseFreespace(uint64_t start, uint64_t count)
 
     // return the starting block index of this allocated space
     updateFreespace();
+    return 0;
+}
+
+/**
+ * @brief delete a file based on the path or filename
+ * 
+ * @param filename may hold a path or filename
+ * @return 0 for success, -1 for fail
+ */
+int fs_delete(char *filename)
+{
+    char *pathBeforeLastSlash = malloc(strlen(filename) + 1);
+    if (pathBeforeLastSlash == NULL)
+    {
+        eprintf("malloc() on pathBeforeLastSlash");
+        return -1;
+    }
+    strcpy(pathBeforeLastSlash, filename);
+    char *trueFileName = getPathByLastSlash(pathBeforeLastSlash);
+
+    // find the directory that is expected for holding that file
+    fdDir *parent = getDirByPath(pathBeforeLastSlash);
+    if (parent == NULL)
+    {
+        printf("%s no such directroy", pathBeforeLastSlash);
+
+        // avoid memory leak
+        free(pathBeforeLastSlash);
+        free(trueFileName);
+        pathBeforeLastSlash = NULL;
+        trueFileName = NULL;
+        return -1;
+    }
+
+    // find the file starting location to delete
+    uint64_t start = -1;
+    uint64_t size = -1;
+    for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
+    {
+        if (parent->entryList[i].space == SPACE_USED &&
+            parent->entryList[i].fileType == TYPE_FILE &&
+            strcmp(parent->entryList[i].d_name, trueFileName) == 0)
+        {
+            start = parent->entryList[i].entryStartLocation;
+            size = parent->entryList[i].size;
+            parent->entryList[i].space = SPACE_FREE;
+            parent->dirEntryAmount--;
+            updateDirectory(parent);
+            break;
+        }
+    }
+
+    // release the blocks occupied by the directory
+    if (releaseFreespace(start, getBlockCount(size)) != 0)
+    {
+        eprintf("releaseFreespace() falied");
+        return -1;
+    }
+
+    printf("\n%s : %s was removed\n", filename, trueFileName);
+
+    free(pathBeforeLastSlash);
+    free(trueFileName);
+    pathBeforeLastSlash = NULL;
+    trueFileName = NULL;
     return 0;
 }
