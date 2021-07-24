@@ -30,7 +30,10 @@ b_fcb fcbArray[MAXFCBS];
 
 int startup = 0; //Indicates that this has not been initialized
 
-//Method to initialize our file system
+/**
+ * @brief initializa our io of file system
+ * 
+ */
 void b_init()
 {
 	//init fcbArray to all free
@@ -42,7 +45,11 @@ void b_init()
 	startup = 1;
 }
 
-//Method to get a free FCB element
+/**
+ * @brief get a file descriptor for an opened file
+ * 
+ * @return 0-MAXFCBS. -1 for no avaliable fd 
+ */
 int b_getFCB()
 {
 	for (int i = 0; i < MAXFCBS; i++)
@@ -56,9 +63,13 @@ int b_getFCB()
 	return (-1); //all in use
 }
 
-// Interface to open a buffered file
-// Modification of interface for this assignment, flags match the Linux flags for open
-// O_RDONLY, O_WRONLY, or O_RDWR didn't implement, just use default
+/**
+ * @brief open the file and set up parent and file name
+ * 
+ * @param path the whole path to the file
+ * @param flags not used, we rather use a detector for default
+ * @return 0-MAXFCBS for a fd, -1 for fail
+ */
 int b_open(char *path, int flags)
 {
 	//don't call b_close() since that requires an initialized fcb
@@ -133,12 +144,18 @@ int b_open(char *path, int flags)
 	return (returnFd); // all set
 }
 
-// Interface to read a buffer
-
 // we chose to rewrite b_read() so it fits with fsshell.c
 // we could use the template to read all bytes into buffer
 // but this is not consistent with the lixux read()
 // so we only read one block each call which is the same as linex read()
+/**
+ * @brief read our buffer into the passed in buffer by given block size
+ * 
+ * @param argfd fd of the file to retrieve data
+ * @param buffer buffer to copy data to
+ * @param count size of the given buffer
+ * @return 0-count for read bytes count, -1 for fail 
+ */
 int b_read(int argfd, char *buffer, int count)
 {
 	if (startup == 0)
@@ -220,7 +237,14 @@ int b_read(int argfd, char *buffer, int count)
 	return bytesToRead;
 }
 
-// Interface to write a buffer
+/**
+ * @brief wirte the data from the passed in buffer into our buffer
+ * 
+ * @param argfd fd of the file to store data
+ * @param buffer buffer with data we want to copy in
+ * @param count size of the given buffer
+ * @return 0-count for written bytes count, -1 for fail 
+ */
 int b_write(int argfd, char *buffer, int count)
 {
 	if (startup == 0)
@@ -299,41 +323,45 @@ int b_write(int argfd, char *buffer, int count)
 	return 0;
 }
 
-// Interface to Close the file
-
-// we decide to do the allocation here since it is easy to check the condition
+/**
+ * @brief close the fd and mark it free
+ * 
+ * @param argfd the fd of the file to be closes
+ */
 void b_close(int argfd)
 {
-	if (fcbArray[argfd].fd != -1)
+	// write the buffer in if it is FUNC_WRITE
+	// this is due to how we design b_write()
+	if (fcbArray[argfd].detector == FUNC_WRITE &&
+		fcbArray[argfd].fd != -1)
 	{
-		if (fcbArray[argfd].detector == FUNC_WRITE)
-		{
-			writeIntoVolume(argfd);
-		}
-		else if (fcbArray[argfd].detector == FUNC_READ)
-		{
-			// do nothing, just make sure the detector is correct
-		}
-		else
-		{
-			// do not free because this means not initialized
-			return;
-		}
+		writeIntoVolume(argfd);
 	}
 
 	// free all associated malloc() pointer
-	free(fcbArray[argfd].buf);
-	free(fcbArray[argfd].parent);
-	free(fcbArray[argfd].trueFileName);
-	fcbArray[argfd].buf = NULL;
-	fcbArray[argfd].parent = NULL;
-	fcbArray[argfd].trueFileName = NULL;
+	if (fcbArray[argfd].buf != NULL)
+	{
+		free(fcbArray[argfd].buf);
+		fcbArray[argfd].buf = NULL;
+	}
+	if (fcbArray[argfd].parent != NULL)
+	{
+		free(fcbArray[argfd].parent);
+		fcbArray[argfd].parent = NULL;
+	}
+	if (fcbArray[argfd].trueFileName != NULL)
+	{
+		free(fcbArray[argfd].trueFileName);
+		fcbArray[argfd].trueFileName = NULL;
+	}
 	fcbArray[argfd].fd = -1;
 }
 
-// this function is only for b_write() to work (look at b_close())
-// b_close() will be responsible to check if there is avaliable space
-// this fucntion is only responisble to write into volume
+/**
+ * @brief write the buffer of the file into volume (used with b_write())
+ * 
+ * @param argfd fd to retrieve data
+ */
 void writeIntoVolume(int argfd)
 {
 	// find the first avaliable space and put it in
