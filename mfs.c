@@ -773,11 +773,10 @@ int fs_mkdir(const char *pathname, mode_t mode)
         for (int i = 0; i < MAX_AMOUNT_OF_ENTRIES; i++)
         {
             if (parent->entryList[i].space == SPACE_USED &&
-                parent->entryList[i].fileType == TYPE_DIR &&
                 strcmp(parent->entryList[i].d_name, newDirName) == 0)
             {
                 releaseFreespace(createdDir->directoryStartLocation, getBlockCount(createdDir->d_reclen));
-                printf("\nsame name of directory existed!\n");
+                printf("\nsame name of directory or file existed!\n");
 
                 // avoid memory leak
                 free(pathBeforeLastSlash);

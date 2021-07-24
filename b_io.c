@@ -171,7 +171,7 @@ int b_read(int argfd, char *buffer, int count)
 	if (fcbArray[argfd].detector == 0)
 	{
 		fcbArray[argfd].detector = FUNC_READ;
-		int i = 2;
+		int i = 0;
 		for (; i < MAX_AMOUNT_OF_ENTRIES; i++)
 		{
 			if (fcbArray[argfd].parent->entryList[i].space == SPACE_USED &&
@@ -268,13 +268,12 @@ int b_write(int argfd, char *buffer, int count)
 		}
 
 		// check if there is already a same name of file
-		for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
+		for (int i = 0; i < MAX_AMOUNT_OF_ENTRIES; i++)
 		{
 			if (fcbArray[argfd].parent->entryList[i].space == SPACE_USED &&
-				fcbArray[argfd].parent->entryList[i].fileType == TYPE_FILE &&
 				strcmp(fcbArray[argfd].parent->entryList[i].d_name, fcbArray[argfd].trueFileName) == 0)
 			{
-				printf("\nsame name of file existed\n");
+				printf("\nsame name of directory or file existed\n");
 				fcbArray[argfd].fd = -1;
 				return -1;
 			}
