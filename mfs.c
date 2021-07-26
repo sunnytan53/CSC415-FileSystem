@@ -321,7 +321,6 @@ int fs_isFile(char *path)
         // check if the item is inside this directory
         for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
         { // make sure that is a used space, a directory and name matched
-            // todo seperate into three lines
             if (retPtr->entryList[i].space == SPACE_USED &&
                 retPtr->entryList[i].fileType == TYPE_FILE &&
                 strcmp(retPtr->entryList[i].d_name, filename) == 0)
@@ -744,6 +743,11 @@ int fs_mkdir(const char *pathname, mode_t mode)
         eprintf("getPathByLastSlash() failed");
         return -1;
     }
+    else if (strcmp(newDirName, "") == 0)
+    {
+        printf("no directory name given\n");
+        return -1;
+    }
 
     // get the directory pointer
     fdDir *parent = getDirByPath(pathBeforeLastSlash);
@@ -825,7 +829,7 @@ int fs_mkdir(const char *pathname, mode_t mode)
 }
 
 /**
- * @brief remove a directory and file
+ * @brief remove a directory file
  * 
  * @param pathname path to the director and file
  * @return 0 for success, -1 for fail
@@ -846,13 +850,8 @@ int fs_rmdir(const char *pathname)
     free(path);
     path = NULL;
 
-    // we can't remove a unexisited directory or the root directory
-    if (target == NULL)
-    {
-        eprintf("getDirByEntry() on target");
-        return -1;
-    }
-    else if (target->directoryStartLocation == ourVCB->rootDirLocation)
+    // we can't remove the root directory
+    if (target->directoryStartLocation == ourVCB->rootDirLocation)
     {
         printf("root can't be removed\n");
 
@@ -1018,17 +1017,6 @@ int fs_delete(char *filename)
 
     // find the directory that is expected for holding that file
     fdDir *parent = getDirByPath(pathBeforeLastSlash);
-    if (parent == NULL)
-    {
-        printf("%s no such directroy", pathBeforeLastSlash);
-
-        // avoid memory leak
-        free(pathBeforeLastSlash);
-        free(trueFileName);
-        pathBeforeLastSlash = NULL;
-        trueFileName = NULL;
-        return -1;
-    }
 
     // find the file starting location to delete
     uint64_t start = -1;

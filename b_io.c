@@ -373,7 +373,7 @@ void writeIntoVolume(int argfd)
 			uint64_t start = allocateFreespace(blockCount);
 			if (start == -1)
 			{ // avoid memory leaking
-				eprintf("allocateFreespace() on start");
+				dprintf("allocateFreespace() on start");
 				fcbArray[argfd].fd = -1;
 				free(fcbArray[argfd].buf);
 				fcbArray[argfd].buf = NULL;

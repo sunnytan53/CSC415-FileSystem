@@ -60,7 +60,7 @@ $(ROOTNAME)$(HW)$(FOPTION): $(OBJ)
 	$(CC) -o $@ $^ $(CFLAGS) -lm -l readline -l $(LIBS)
 
 clean:
-	rm $(ROOTNAME)$(HW)$(FOPTION).o $(ADDOBJ) $(ROOTNAME)$(HW)$(FOPTION) SampleVolume
+	rm $(ROOTNAME)$(HW)$(FOPTION).o $(ADDOBJ) $(ROOTNAME)$(HW)$(FOPTION)
 
 run: $(ROOTNAME)$(HW)$(FOPTION)
 	./$(ROOTNAME)$(HW)$(FOPTION) $(RUNOPTIONS)

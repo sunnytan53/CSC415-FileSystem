@@ -790,7 +790,7 @@ int main(int argc, char *argv[])
 	retVal = initFileSystem(volumeSize / blockSize, blockSize);
 
 	if (retVal != 0)
-	{
+	{ 
 		printf("Initialize File System Failed:  %d\n", retVal);
 		closePartitionSystem();
 		return (retVal);
