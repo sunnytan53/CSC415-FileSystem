@@ -767,11 +767,6 @@ int fs_mkdir(const char *pathname, mode_t mode)
     int retVal = 0;
     if (parent->dirEntryAmount < MAX_AMOUNT_OF_ENTRIES)
     {
-        dprintf("creating new directory %s", newDirName);
-
-        // create the new directory
-        fdDir *createdDir = createDirectory(parent->entryList, newDirName);
-
         // skip if it has same name with existed one
         // NOTE: must check all, because we don't want user to create . and .. !!!
         for (int i = 0; i < MAX_AMOUNT_OF_ENTRIES; i++)
@@ -779,7 +774,6 @@ int fs_mkdir(const char *pathname, mode_t mode)
             if (parent->entryList[i].space == SPACE_USED &&
                 strcmp(parent->entryList[i].d_name, newDirName) == 0)
             {
-                releaseFreespace(createdDir->directoryStartLocation, getBlockCount(createdDir->d_reclen));
                 printf("\nsame name of directory or file existed!\n");
 
                 // avoid memory leak
@@ -792,6 +786,11 @@ int fs_mkdir(const char *pathname, mode_t mode)
                 return -1;
             }
         }
+        
+        dprintf("creating new directory %s", newDirName);
+
+        // create the new directory
+        fdDir *createdDir = createDirectory(parent->entryList, newDirName);
 
         // find the first avaliable space and put the data in
         for (int i = 2; i < MAX_AMOUNT_OF_ENTRIES; i++)
