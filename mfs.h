@@ -1,10 +1,11 @@
 /**************************************************************
 * Class:  CSC-415-02 Summer 2021
 * Name: Team Fiore
-* Student ID:
 
-
-
+Haoyuan Tan(Sunny), 918274583, CiYuan53
+Minseon Park, 917199574, minseon-park
+Yong Chi, 920771004, ychi1
+Siqi Guo, 918209895, Guo-1999
 
 * File: mfs.h
 *

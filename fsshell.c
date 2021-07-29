@@ -1,10 +1,11 @@
 /**************************************************************
 * Class:  CSC-415-02 Summer 2021
 * Name: Team Fiore 
-* Student ID:
 
-
-
+Haoyuan Tan(Sunny), 918274583, CiYuan53
+Minseon Park, 917199574, minseon-park
+Yong Chi, 920771004, ychi1
+Siqi Guo, 918209895, Guo-1999
 
 * Project: Basic File System
 *
@@ -138,7 +139,7 @@ int cmd_help(int argcnt, char *argvec[]);
 
 dispatch_t dispatchTable[] = {
 	{"ls", cmd_ls, "Lists the file in a directory"},
-	{"cp", cmd_cp, "Copies a file - source [dest]"},
+	{"cp", cmd_cp, "Copies a file - source dest"},
 	{"mv", cmd_mv, "Moves a file - source dest"},
 	{"md", cmd_md, "Make a new directory"},
 	{"rm", cmd_rm, "Removes a file or directory"},
@@ -308,11 +309,6 @@ int cmd_cp(int argcnt, char *argvec[])
 
 	switch (argcnt)
 	{
-	case 2: //only one name provided
-		src = argvec[1];
-		dest = src;
-		break;
-
 	case 3:
 		src = argvec[1];
 		dest = argvec[2];
@@ -351,11 +347,6 @@ int cmd_mv(int argcnt, char *argvec[])
 
 	switch (argcnt)
 	{
-	case 2:
-		src = argvec[1];
-		dest = src;
-		break;
-
 	case 3:
 		src = argvec[1];
 		dest = argvec[2];
@@ -381,7 +372,7 @@ int cmd_mv(int argcnt, char *argvec[])
 	{
 		readCount = b_read(test_fdsrc, buf, BUFFERLEN);
 		writeCount = b_write(test_fddest, buf, readCount);
-	} while (readCount == BUFFERLEN);
+	} while (readCount == BUFFERLEN && writeCount >= 0);
 
 	//close the files
 	b_close(test_fdsrc);
@@ -391,6 +382,10 @@ int cmd_mv(int argcnt, char *argvec[])
 	if (readCount >= 0 && writeCount >= 0)
 	{
 		fs_delete(src);
+	}
+	else
+	{
+		return -1;
 	}
 
 #endif
@@ -537,7 +532,7 @@ int cmd_cp2fs(int argcnt, char *argvec[])
 	testfs_fd = b_open(dest, O_WRONLY | O_CREAT | O_TRUNC);
 	if (testfs_fd < 0)
 	{
-		printf("%s not existed in volume\n", dest);
+		printf("failed to open %s\n", dest);
 		return -1;
 	}
 
@@ -790,7 +785,7 @@ int main(int argc, char *argv[])
 	retVal = initFileSystem(volumeSize / blockSize, blockSize);
 
 	if (retVal != 0)
-	{ 
+	{
 		printf("Initialize File System Failed:  %d\n", retVal);
 		closePartitionSystem();
 		return (retVal);

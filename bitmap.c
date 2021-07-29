@@ -1,3 +1,20 @@
+/**************************************************************
+* Class:  CSC-415-02 Summer 2021
+* Name: Team Fiore 
+
+Haoyuan Tan(Sunny), 918274583, CiYuan53
+Minseon Park, 917199574, minseon-park
+Yong Chi, 920771004, ychi1
+Siqi Guo, 918209895, Guo-1999
+
+* Project: Basic File System
+*
+* File: bitmap.c
+*
+* Description: read and modify a bit array using int array
+*
+**************************************************************/
+
 #include "mfs.h"
 
 int setUsed(uint64_t, int *bitmap);

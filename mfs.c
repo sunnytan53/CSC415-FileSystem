@@ -1,3 +1,21 @@
+/**************************************************************
+* Class:  CSC-415-02 Summer 2021
+* Name: Team Fiore 
+
+Haoyuan Tan(Sunny), 918274583, CiYuan53
+Minseon Park, 917199574, minseon-park
+Yong Chi, 920771004, ychi1
+Siqi Guo, 918209895, Guo-1999
+
+* Project: Basic File System
+*
+* File: mfs.c
+*
+* Description: contains all function related to executing commands
+* and also helper methodsd such as reading the directory file
+*
+**************************************************************/
+
 #include "mfs.h"
 #include "bitmap.c"
 

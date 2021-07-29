@@ -1,3 +1,20 @@
+/**************************************************************
+* Class:  CSC-415-02 Summer 2021
+* Name: Team Fiore 
+
+Haoyuan Tan(Sunny), 918274583, CiYuan53
+Minseon Park, 917199574, minseon-park
+Yong Chi, 920771004, ychi1
+Siqi Guo, 918209895, Guo-1999
+
+* Project: Basic File System
+*
+* File: b_io.c
+*
+* Description: opens file, read file and write file into volume
+*
+**************************************************************/
+
 #include <stdlib.h> // for malloc
 #include <string.h> // for memcpy
 #include <sys/types.h>
@@ -114,10 +131,10 @@ int b_open(char *path, int flags)
 	if (strcmp(fcbArray[returnFd].trueFileName, "") == 0)
 	{ // avoiding memory leak
 		printf("\nname should be given!!!\n");
-		fcbArray[returnFd].fd = -1;
+		fcbArray[returnFd].fd = -2;
 		free(pathBeforeLastSlash);
 		pathBeforeLastSlash = NULL;
-		return -1;
+		return -2;
 	}
 
 	// find the directory that is going to store the file
@@ -126,10 +143,10 @@ int b_open(char *path, int flags)
 	// error handle and avaliable space check
 	if (fcbArray[returnFd].parent == NULL)
 	{ // avoiding memory leak
-		fcbArray[returnFd].fd = -1;
+		fcbArray[returnFd].fd = -2;
 		free(pathBeforeLastSlash);
 		pathBeforeLastSlash = NULL;
-		return -1;
+		return -2;
 	}
 
 	// free the unused buffer
@@ -189,7 +206,7 @@ int b_read(int argfd, char *buffer, int count)
 				if (fcbArray[argfd].buf == NULL)
 				{
 					eprintf("malloc() on fcbArray[argfd].buf");
-					fcbArray[argfd].fd = -1;
+					fcbArray[argfd].fd = -2;
 					return -1;
 				}
 
@@ -263,7 +280,7 @@ int b_write(int argfd, char *buffer, int count)
 		// check if there is no more place to store files in parent directory
 		if (fcbArray[argfd].parent->dirEntryAmount >= MAX_AMOUNT_OF_ENTRIES)
 		{
-			fcbArray[argfd].fd = -1;
+			fcbArray[argfd].fd = -2;
 			return -1;
 		}
 
@@ -274,7 +291,7 @@ int b_write(int argfd, char *buffer, int count)
 				strcmp(fcbArray[argfd].parent->entryList[i].d_name, fcbArray[argfd].trueFileName) == 0)
 			{
 				printf("\nsame name of directory or file existed\n");
-				fcbArray[argfd].fd = -1;
+				fcbArray[argfd].fd = -2;
 				return -1;
 			}
 		}
@@ -284,7 +301,7 @@ int b_write(int argfd, char *buffer, int count)
 		if (fcbArray[argfd].buf == NULL)
 		{
 			eprintf("malloc() on fcbArray[returnFd].buf");
-			fcbArray[argfd].fd = -1;
+			fcbArray[argfd].fd = -2;
 			return -1;
 		}
 		fcbArray[argfd].buflen += B_CHUNK_SIZE;
@@ -329,29 +346,33 @@ int b_write(int argfd, char *buffer, int count)
  */
 void b_close(int argfd)
 {
-	// write the buffer in if it is FUNC_WRITE
-	// this is due to how we design b_write()
-	if (fcbArray[argfd].detector == FUNC_WRITE &&
-		fcbArray[argfd].fd != -1)
+	// check for some error that return a invalid fd
+	// must handle memory leak above (no time to optimize better)
+	if (fcbArray[argfd].fd != -1 && fcbArray[argfd].fd != -2)
 	{
-		writeIntoVolume(argfd);
-	}
+		// write the buffer in if it is FUNC_WRITE
+		// this is due to how we design b_write()
+		if (fcbArray[argfd].detector == FUNC_WRITE)
+		{
+			writeIntoVolume(argfd);
+		}
 
-	// free all associated malloc() pointer
-	if (fcbArray[argfd].buf != NULL)
-	{
-		free(fcbArray[argfd].buf);
-		fcbArray[argfd].buf = NULL;
-	}
-	if (fcbArray[argfd].parent != NULL)
-	{
-		free(fcbArray[argfd].parent);
-		fcbArray[argfd].parent = NULL;
-	}
-	if (fcbArray[argfd].trueFileName != NULL)
-	{
-		free(fcbArray[argfd].trueFileName);
-		fcbArray[argfd].trueFileName = NULL;
+		// free all associated malloc() pointer
+		if (fcbArray[argfd].buf != NULL)
+		{
+			free(fcbArray[argfd].buf);
+			fcbArray[argfd].buf = NULL;
+		}
+		if (fcbArray[argfd].parent != NULL)
+		{
+			free(fcbArray[argfd].parent);
+			fcbArray[argfd].parent = NULL;
+		}
+		if (fcbArray[argfd].trueFileName != NULL)
+		{
+			free(fcbArray[argfd].trueFileName);
+			fcbArray[argfd].trueFileName = NULL;
+		}
 	}
 	fcbArray[argfd].fd = -1;
 }
